@@ -5,15 +5,11 @@ package unidecode
 
 import (
 	"unicode"
-
-	"gopkgs.com/pool.v1"
 )
 
 const pooledCapacity = 64
 
-var (
-	slicePool = pool.New(0)
-)
+var pool = make(chan []rune, 8)
 
 // Unidecode implements a unicode transliterator, which
 // replaces non-ASCII characters with their ASCII
@@ -36,9 +32,10 @@ func Unidecode(s string) string {
 	if l > pooledCapacity {
 		r = make([]rune, 0, len(s))
 	} else {
-		if x := slicePool.Get(); x != nil {
-			r = x.([]rune)[:0]
-		} else {
+		select {
+		case r = <-pool:
+			r = r[:0]
+		default:
 			r = make([]rune, 0, pooledCapacity)
 		}
 	}
@@ -55,9 +52,11 @@ func Unidecode(s string) string {
 			r = append(r, d...)
 		}
 	}
-	res := string(r)
 	if l <= pooledCapacity {
-		slicePool.Put(r)
+		select {
+		case pool <- r:
+		default:
+		}
 	}
-	return res
+	return string(r)
 }
